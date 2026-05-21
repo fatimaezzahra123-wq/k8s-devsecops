@@ -22,6 +22,25 @@ jobs:
           kubeconform -strict apps/nginx/deployment.yaml
           echo "✅ Manifests are valid!"
 
+  security-scan:
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+
+      - name: Scan nginx image
+        run: |
+          trivy image --exit-code 0 \
+            --severity HIGH,CRITICAL \
+            --format table \
+            nginx:latest
+          echo "✅ Security scan completed!"
+
       - name: Summary
         run: |
           echo "✅ CI Pipeline completed!"
