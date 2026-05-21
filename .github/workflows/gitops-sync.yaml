@@ -12,19 +12,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install kubectl
+      - name: Install kubeconform
         run: |
-          curl -LO "https://dl.k8s.io/release/v1.31.0/bin/linux/amd64/kubectl"
-          chmod +x kubectl
-          sudo mv kubectl /usr/local/bin/
+          curl -sSL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar xz
+          sudo mv kubeconform /usr/local/bin/
 
       - name: Validate Kubernetes manifests
         run: |
-          kubectl apply --dry-run=client --validate=false -f apps/nginx/deployment.yaml
+          kubeconform -strict apps/nginx/deployment.yaml
           echo "✅ Manifests are valid!"
 
-      - name: Check deployment files
+      - name: Summary
         run: |
-          echo "📁 Files changed:"
-          git diff --name-only HEAD~1 HEAD || echo "Initial commit"
-          echo "✅ CI Pipeline completed - ArgoCD will sync automatically"
+          echo "✅ CI Pipeline completed!"
+          echo "📦 ArgoCD will sync automatically to the cluster"
