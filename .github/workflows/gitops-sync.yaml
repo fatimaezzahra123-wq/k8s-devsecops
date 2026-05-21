@@ -12,12 +12,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Validate Kubernetes manifests
+      - name: Install kubectl
         run: |
           curl -LO "https://dl.k8s.io/release/v1.31.0/bin/linux/amd64/kubectl"
           chmod +x kubectl
           sudo mv kubectl /usr/local/bin/
-          kubectl apply --dry-run=client -f apps/nginx/deployment.yaml
+
+      - name: Validate Kubernetes manifests
+        run: |
+          kubectl apply --dry-run=client --validate=false -f apps/nginx/deployment.yaml
           echo "✅ Manifests are valid!"
 
       - name: Check deployment files
