@@ -1,14 +1,3 @@
-terraform {
-  required_providers {
-    kind = {
-      source  = "tehcyx/kind"
-      version = "0.4.0"
-    }
-  }
-}
-
-provider "kind" {}
-
 resource "kind_cluster" "devsecops" {
   name            = var.cluster_name
   wait_for_ready  = true
@@ -18,7 +7,7 @@ resource "kind_cluster" "devsecops" {
     api_version = "kind.x-k8s.io/v1alpha4"
 
     node {
-      role = "control-plane"
+      role  = "control-plane"
       image = "kindest/node:${var.kubernetes_version}"
       extra_mounts {
         host_path      = "/tmp/falco"
