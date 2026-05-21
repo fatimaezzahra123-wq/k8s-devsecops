@@ -19,8 +19,8 @@ jobs:
 
       - name: Validate Kubernetes manifests
         run: |
-          kubeconform -strict apps/nginx/deployment.yaml
-          echo "✅ Manifests are valid!"
+          find . -name "*.yaml" -path "*/apps/*" | xargs -I {} kubeconform -strict {}
+          echo "✅ All manifests are valid!"
 
   security-scan:
     runs-on: ubuntu-latest
@@ -33,13 +33,25 @@ jobs:
         run: |
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
 
-      - name: Scan nginx image
+      - name: Scan all Kubernetes configs
         run: |
-          trivy image --exit-code 0 \
-            --severity HIGH,CRITICAL \
-            --format table \
-            nginx:latest
-          echo "✅ Security scan completed!"
+          echo "🔍 Scanning Kubernetes configurations..."
+          trivy config --severity HIGH,CRITICAL .
+          echo "✅ Config scan completed!"
+
+      - name: Extract and scan all images
+        run: |
+          echo "🔍 Extracting images from manifests..."
+          images=$(grep -r "image:" apps/ | awk '{print $NF}' | sort -u)
+          echo "Found images: $images"
+          for image in $images; do
+            echo "🔍 Scanning image: $image"
+            trivy image --exit-code 0 \
+              --severity HIGH,CRITICAL \
+              --format table \
+              $image
+          done
+          echo "✅ All images scanned!"
 
       - name: Summary
         run: |
