@@ -1,4 +1,4 @@
-name: GitOps Sync
+name: GitOps CI Pipeline
 
 on:
   push:
@@ -6,21 +6,22 @@ on:
       - main
 
 jobs:
-  sync:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Install ArgoCD CLI
+      - name: Validate Kubernetes manifests
         run: |
-          curl -sSL -o argocd https://github.com/argoproj/argo-cd/releases/download/v2.14.0/argocd-linux-amd64
-          chmod +x argocd
-          sudo mv argocd /usr/local/bin/
+          curl -LO "https://dl.k8s.io/release/v1.31.0/bin/linux/amd64/kubectl"
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/
+          kubectl apply --dry-run=client -f apps/nginx/deployment.yaml
+          echo "✅ Manifests are valid!"
 
-      - name: Sync ArgoCD App
+      - name: Check deployment files
         run: |
-          argocd app sync nginx-test \
-            --server ${{ secrets.ARGOCD_SERVER }} \
-            --auth-token ${{ secrets.ARGOCD_TOKEN }} \
-            --insecure
+          echo "📁 Files changed:"
+          git diff --name-only HEAD~1 HEAD || echo "Initial commit"
+          echo "✅ CI Pipeline completed - ArgoCD will sync automatically"
