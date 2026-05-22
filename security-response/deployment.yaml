@@ -1,0 +1,148 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: falco-response
+  namespace: falco
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: falco-response
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "patch", "label"]
+- apiGroups: ["networking.k8s.io"]
+  resources: ["networkpolicies"]
+  verbs: ["create", "apply", "get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: falco-response
+subjects:
+- kind: ServiceAccount
+  name: falco-response
+  namespace: falco
+roleRef:
+  kind: ClusterRole
+  name: falco-response
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: falco-response
+  namespace: falco
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: falco-response
+  template:
+    metadata:
+      labels:
+        app: falco-response
+    spec:
+      serviceAccountName: falco-response
+      containers:
+      - name: falco-response
+        image: python:3.11-slim
+        command: ["python", "/app/webhook-handler.py"]
+        volumeMounts:
+        - name: handler
+          mountPath: /app
+        ports:
+        - containerPort: 9000
+      initContainers:
+      - name: install-kubectl
+        image: python:3.11-slim
+        command:
+        - sh
+        - -c
+        - |
+          apt-get update && apt-get install -y curl && \
+          curl -LO "https://dl.k8s.io/release/v1.31.0/bin/linux/amd64/kubectl" && \
+          chmod +x kubectl && mv kubectl /usr/bin/kubectl
+        volumeMounts:
+        - name: handler
+          mountPath: /app
+      volumes:
+      - name: handler
+        configMap:
+          name: falco-response-script
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: falco-response-script
+  namespace: falco
+data:
+  webhook-handler.py: |
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+    import json
+    import subprocess
+    import logging
+
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+
+    class FalcoWebhookHandler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            content_length = int(self.headers['Content-Length'])
+            body = self.rfile.read(content_length)
+            try:
+                alert = json.loads(body)
+                priority = alert.get('priority', '')
+                pod_name = alert.get('output_fields', {}).get('k8s.pod.name', '')
+                namespace = alert.get('output_fields', {}).get('k8s.ns.name', 'default')
+                rule = alert.get('rule', '')
+                logger.info(f"Alert: {priority} - {rule} - Pod: {pod_name}")
+                if priority == 'Critical' and pod_name and pod_name != '<NA>':
+                    logger.warning(f"CRITICAL! Isolating pod: {pod_name}")
+                    self.isolate_pod(pod_name, namespace)
+            except Exception as e:
+                logger.error(f"Error: {e}")
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'OK')
+
+        def isolate_pod(self, pod_name, namespace):
+            subprocess.run(['kubectl', 'label', 'pod', pod_name, '-n', namespace, 'isolated=true', '--overwrite'])
+            policy = f"""apiVersion: networking.k8s.io/v1
+    kind: NetworkPolicy
+    metadata:
+      name: isolate-{pod_name}
+      namespace: {namespace}
+    spec:
+      podSelector:
+        matchLabels:
+          isolated: "true"
+      policyTypes:
+      - Ingress
+      - Egress"""
+            result = subprocess.run(['kubectl', 'apply', '-f', '-'], input=policy.encode(), capture_output=True)
+            if result.returncode == 0:
+                logger.info(f"Pod {pod_name} isolated!")
+            else:
+                logger.error(f"Failed: {result.stderr.decode()}")
+
+        def log_message(self, format, *args):
+            pass
+
+    if __name__ == '__main__':
+        server = HTTPServer(('0.0.0.0', 9000), FalcoWebhookHandler)
+        logger.info("Falco Webhook Handler started on port 9000")
+        server.serve_forever()
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: falco-response
+  namespace: falco
+spec:
+  selector:
+    app: falco-response
+  ports:
+  - port: 9000
+    targetPort: 9000
