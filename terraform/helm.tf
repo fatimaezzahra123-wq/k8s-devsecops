@@ -161,3 +161,8 @@ resource "helm_release" "loki" {
 
   depends_on = [helm_release.prometheus]
 }
+
+resource "kubectl_manifest" "applicationset" {
+  yaml_body = file("${path.module}/../gitops/applicationset.yaml")
+  depends_on = [helm_release.argocd]
+}
