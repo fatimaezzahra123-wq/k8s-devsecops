@@ -116,6 +116,7 @@ resource "helm_release" "prometheus" {
   namespace        = "monitoring"
   create_namespace = true
   wait             = false
+  values           = [file("${path.module}/../monitoring/grafana-values.yaml")]
 
   set {
     name  = "grafana.adminPassword"

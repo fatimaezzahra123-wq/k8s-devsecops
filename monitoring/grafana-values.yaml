@@ -530,3 +530,181 @@ grafana:
                               }
                     ]
           }
+  alerting:
+    rules.yaml:
+      apiVersion: 1
+      groups:
+        - orgId: 1
+          name: Falco-Alerts
+          folder: Falco-Alerts
+          interval: 1m
+          rules:
+            - uid: ffmxp1ewiyeiod
+              title: Falco-Critical-Alert
+              condition: C
+              data:
+                - refId: A
+                  datasourceUid: loki
+                  relativeTimeRange:
+                    from: 3600
+                    to: 0
+                  model:
+                    expr: 'sum(count_over_time({app="falco"} | json | priority="Critical" [1h]))'
+                    instant: true
+                    refId: A
+                - refId: C
+                  datasourceUid: "-100"
+                  relativeTimeRange:
+                    from: 3600
+                    to: 0
+                  model:
+                    conditions:
+                      - evaluator:
+                          params:
+                            - 0
+                          type: gt
+                        operator:
+                          type: and
+                        query:
+                          params:
+                            - A
+                        reducer:
+                          type: last
+                        type: query
+                    refId: C
+                    type: classic_conditions
+              noDataState: NoData
+              execErrState: Error
+              for: 0s
+              labels:
+                severity: critical
+              annotations:
+                summary: "CRITICAL Security Alert detecte par Falco"
+            - uid: ffmxp4cj3vsaod
+              title: Falco-Warning-Alert
+              condition: C
+              data:
+                - refId: A
+                  datasourceUid: loki
+                  relativeTimeRange:
+                    from: 3600
+                    to: 0
+                  model:
+                    expr: 'sum(count_over_time({app="falco"} | json | priority="Warning" [1h]))'
+                    instant: true
+                    refId: A
+                - refId: C
+                  datasourceUid: "-100"
+                  relativeTimeRange:
+                    from: 3600
+                    to: 0
+                  model:
+                    conditions:
+                      - evaluator:
+                          params:
+                            - 0
+                          type: gt
+                        operator:
+                          type: and
+                        query:
+                          params:
+                            - A
+                        reducer:
+                          type: last
+                        type: query
+                    refId: C
+                    type: classic_conditions
+              noDataState: NoData
+              execErrState: Error
+              for: 0s
+              labels:
+                severity: warning
+              annotations:
+                summary: "WARNING Security Alert detecte par Falco"
+            - uid: efmxp4dafrshsd
+              title: Falco-Notice-Alert
+              condition: C
+              data:
+                - refId: A
+                  datasourceUid: loki
+                  relativeTimeRange:
+                    from: 3600
+                    to: 0
+                  model:
+                    expr: 'sum(count_over_time({app="falco"} | json | priority="Notice" [1h]))'
+                    instant: true
+                    refId: A
+                - refId: C
+                  datasourceUid: "-100"
+                  relativeTimeRange:
+                    from: 3600
+                    to: 0
+                  model:
+                    conditions:
+                      - evaluator:
+                          params:
+                            - 0
+                          type: gt
+                        operator:
+                          type: and
+                        query:
+                          params:
+                            - A
+                        reducer:
+                          type: last
+                        type: query
+                    refId: C
+                    type: classic_conditions
+              noDataState: NoData
+              execErrState: Error
+              for: 0s
+              labels:
+                severity: notice
+              annotations:
+                summary: "NOTICE Security Alert detecte par Falco"
+    contactpoints.yaml:
+      apiVersion: 1
+      contactPoints:
+        - orgId: 1
+          name: Falco-Webhook
+          receivers:
+            - uid: dfmxor58afe9sf
+              type: webhook
+              settings:
+                url: http://falco-response.falco.svc.cluster.local:9000
+                httpMethod: POST
+        - orgId: 1
+          name: Webhook-Site
+          receivers:
+            - uid: ffmxs72r6iy9sf
+              type: webhook
+              settings:
+                url: https://webhook.site/6a0b9b46-9a67-4799-8aa3-0d137b1ef989
+                httpMethod: POST
+    policies.yaml:
+      apiVersion: 1
+      policies:
+        - orgId: 1
+          receiver: Falco-Webhook
+          group_by:
+            - alertname
+            - severity
+          group_wait: 10s
+          group_interval: 1m
+          repeat_interval: 5m
+          routes:
+            - receiver: Webhook-Site
+              matchers:
+                - severity=critical
+              group_wait: 0s
+              repeat_interval: 2m
+            - receiver: Webhook-Site
+              matchers:
+                - severity=warning
+              group_wait: 10s
+              repeat_interval: 5m
+            - receiver: Webhook-Site
+              matchers:
+                - severity=notice
+              group_wait: 30s
+              repeat_interval: 10m
