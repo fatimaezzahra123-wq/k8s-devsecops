@@ -76,6 +76,27 @@ resource "helm_release" "falco" {
   wait             = false
 
   set {
+    name  = "falcosidekick.config.loki.hostport"
+    value = "http://loki.monitoring.svc.cluster.local:3100"
+  }
+  set {
+    name  = "falcosidekick.config.loki.tenant"
+    value = "fake"
+  }
+  set {
+    name  = "falcosidekick.config.loki.endpoint"
+    value = "/loki/api/v1/push"
+  }
+  set {
+    name  = "falcosidekick.config.loki.minimumpriority"
+    value = "debug"
+  }
+  set {
+    name  = "falcosidekick.config.webhook.address"
+    value = "http://falco-response.falco.svc.cluster.local:9000"
+  }
+
+  set {
     name  = "driver.kind"
     value = "modern_ebpf"
   }
