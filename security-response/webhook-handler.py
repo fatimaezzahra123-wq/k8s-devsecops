@@ -1,75 +1,40 @@
 from http.server import HTTPServer, BaseHTTPRequestHandler
-import json
-import subprocess
-import logging
-
+import json, subprocess, logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-class FalcoWebhookHandler(BaseHTTPRequestHandler):
+IGNORED_NS = ['kube-system','falco','monitoring','ingress-nginx','argocd','local-path-storage']
+IGNORED_PODS = ['prometheus','grafana','loki','argocd','falco','nginx-test','coredns']
+class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
-        content_length = int(self.headers['Content-Length'])
-        body = self.rfile.read(content_length)
-        
+        body = self.rfile.read(int(self.headers['Content-Length']))
         try:
             alert = json.loads(body)
-            priority = alert.get('priority', '')
-            pod_name = alert.get('output_fields', {}).get('k8s.pod.name', '')
-            namespace = alert.get('output_fields', {}).get('k8s.ns.name', 'default')
-            rule = alert.get('rule', '')
-
-            logger.info(f"Alert received: {priority} - {rule} - Pod: {pod_name}")
-
-            if priority == 'Critical' and pod_name and pod_name != '<NA>':
-                logger.warning(f"🚨 CRITICAL alert! Isolating pod: {pod_name}")
-                self.isolate_pod(pod_name, namespace)
-
+            priority = alert.get('priority','')
+            fields = alert.get('output_fields',{})
+            pod = fields.get('k8s.pod.name','')
+            ns = fields.get('k8s.ns.name','default')
+            rule = alert.get('rule','')
+            logger.info(f"Alert: {priority} - {rule} - Pod: {pod} - NS: {ns}")
+            if priority in ['Critical','Warning'] and pod and pod not in ['<NA>','None',None]:
+                if ns in IGNORED_NS:
+                    logger.info(f"Ignoring system ns: {ns}")
+                elif any(pod.startswith(p) for p in IGNORED_PODS):
+                    logger.info(f"Ignoring system pod: {pod}")
+                else:
+                    logger.warning(f"ISOLATING pod: {pod} in {ns}")
+                    self.isolate(pod, ns)
         except Exception as e:
-            logger.error(f"Error processing alert: {e}")
-
+            logger.error(f"Error: {e}")
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b'OK')
-
-    def isolate_pod(self, pod_name, namespace):
-        policy = f"""
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: isolate-{pod_name}
-  namespace: {namespace}
-spec:
-  podSelector:
-    matchLabels:
-      isolated: "true"
-  policyTypes:
-  - Ingress
-  - Egress
-"""
-        # Label the pod first
-        subprocess.run([
-            'kubectl', 'label', 'pod', pod_name,
-            '-n', namespace,
-            'isolated=true',
-            '--overwrite'
-        ])
-
-        # Apply NetworkPolicy
-        result = subprocess.run(
-            ['kubectl', 'apply', '-f', '-'],
-            input=policy.encode(),
-            capture_output=True
-        )
-        
-        if result.returncode == 0:
-            logger.info(f"✅ Pod {pod_name} isolated successfully!")
-        else:
-            logger.error(f"❌ Failed to isolate pod: {result.stderr.decode()}")
-
-    def log_message(self, format, *args):
-        pass
-
+    def isolate(self, pod, ns):
+        subprocess.run(['/kubectl-bin/kubectl','label','pod',pod,'-n',ns,'isolated=true','--overwrite'])
+        policy = f"apiVersion: networking.k8s.io/v1\nkind: NetworkPolicy\nmetadata:\n  name: isolate-{pod}\n  namespace: {ns}\nspec:\n  podSelector:\n    matchLabels:\n      isolated: 'true'\n  policyTypes:\n  - Ingress\n  - Egress"
+        r = subprocess.run(['/kubectl-bin/kubectl','apply','-f','-'], input=policy.encode(), capture_output=True)
+        logger.info(f"Isolated: {r.returncode == 0}")
+    def log_message(self, f, *a): pass
 if __name__ == '__main__':
-    server = HTTPServer(('0.0.0.0', 9000), FalcoWebhookHandler)
-    logger.info("🚀 Falco Webhook Handler started on port 9000")
+    server = HTTPServer(('0.0.0.0', 9000), Handler)
+    logger.info("Falco Response Handler started on port 9000")
     server.serve_forever()
