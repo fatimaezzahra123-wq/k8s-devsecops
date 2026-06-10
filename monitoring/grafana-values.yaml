@@ -1,10 +1,6 @@
 grafana:
   adminPassword: devsecops123
 
-  sidecar:
-    datasources:
-      defaultDatasourceEnabled: false
-
   datasources:
     datasources.yaml:
       apiVersion: 1
